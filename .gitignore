@@ -18,3 +18,9 @@ local.properties
 keystore/
 docs/
 libs/
+
+# Agent skill configuration
+!docs/
+docs/*
+!docs/agents/
+!docs/agents/**
