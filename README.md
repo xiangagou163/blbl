@@ -66,8 +66,8 @@
 ./gradlew assembleRelease -PversionName=0.1.1 -PversionCode=2
 ```
 
-## 临时更新方案
-**目前在代码中内置了国内环境可直接访问的直链,用于在测试阶段方便的覆盖更新,待后续稳定之后将会移除**,介意者请从release中下载action编译的安装包
+## 更新检查
+应用从本仓库的 GitHub Releases 检查稳定版本，并下载与当前安装包类型匹配的 APK。发布时请将 `blbl-android-<version>-debug.apk` 和 `blbl-android-<version>-release.apk` 上传到对应的版本 Release。
 
 ## GitHub Actions
 

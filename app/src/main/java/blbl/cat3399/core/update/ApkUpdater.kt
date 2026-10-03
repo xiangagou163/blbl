@@ -18,6 +18,8 @@ import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import org.json.JSONArray
+import org.json.JSONObject
 import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
@@ -26,13 +28,10 @@ import java.util.concurrent.TimeUnit
 import kotlin.math.roundToInt
 
 object ApkUpdater {
-    private const val DEBUG_APK_URL = "https://cat3399.top/blbl/blbl-latest-debug.apk"
-    private const val RELEASE_APK_URL = "https://cat3399.top/blbl/blbl-latest-release.apk"
-    private const val CHANGELOG_URL = "https://cat3399.top/blbl/CHANGELOG.md"
-    val TEST_APK_URL: String
-        get() = if (BuildConfig.DEBUG) DEBUG_APK_URL else RELEASE_APK_URL
-    val TEST_CHANGELOG_URL: String
-        get() = CHANGELOG_URL
+    private const val LATEST_RELEASES_URL =
+        "https://api.github.com/repos/xiangagou163/blbl/releases?per_page=100"
+    private const val RELEASE_DOWNLOAD_URL =
+        "https://github.com/xiangagou163/blbl/releases/download"
 
     private const val COOLDOWN_MS = 5_000L
 
@@ -101,7 +100,7 @@ object ApkUpdater {
     }
 
     suspend fun fetchLatestUpdate(
-        url: String = TEST_CHANGELOG_URL,
+        url: String = LATEST_RELEASES_URL,
     ): RemoteUpdate {
         return withContext(Dispatchers.IO) {
             var lastError: Throwable? = null
@@ -128,16 +127,84 @@ object ApkUpdater {
         val req =
             Request.Builder()
                 .url(url)
+                .header("Accept", "application/vnd.github+json")
+                .header("User-Agent", "blbl-android")
+                .header("X-GitHub-Api-Version", "2022-11-28")
                 .header("Cache-Control", "no-cache")
                 .get()
                 .build()
         val call = okHttp.newCall(req)
         val res = call.execute()
         res.use { r ->
+            if (r.code == 404) error("暂无可用版本")
             check(r.isSuccessful) { "HTTP ${r.code} ${r.message}" }
             val body = r.body ?: error("empty body")
-            return parseChangelog(body.string())
+            return parseReleases(body.string())
         }
+    }
+
+    internal fun parseReleases(
+        raw: String,
+        isDebugBuild: Boolean = BuildConfig.DEBUG,
+    ): RemoteUpdate {
+        val releases = JSONArray(raw)
+        check(releases.length() > 0) { "暂无可用版本" }
+
+        val stableReleases =
+            (0 until releases.length())
+                .map { index ->
+                    releases.optJSONObject(index) ?: error("Release 数据格式无效")
+                }
+                .filterNot { release ->
+                    release.optBoolean("draft") || release.optBoolean("prerelease")
+                }
+        check(stableReleases.isNotEmpty()) { "暂无可用版本" }
+
+        val latestRelease = stableReleases.first()
+        val latest =
+            parseRelease(latestRelease, isDebugBuild)
+                ?: error(
+                    "稳定版 Release 缺少 APK：${
+                        apkAssetNameFor(latestRelease.optString("tag_name"), isDebugBuild)
+                    }",
+                )
+        val versions =
+            buildList {
+                add(latest)
+                stableReleases.drop(1).forEach { release ->
+                    parseRelease(release, isDebugBuild)?.let(::add)
+                }
+            }
+        return latest.copy(versions = versions)
+    }
+
+    private fun parseRelease(
+        release: JSONObject,
+        isDebugBuild: Boolean,
+    ): RemoteUpdate? {
+        val versionName = release.optString("tag_name").trim().removePrefix("v")
+        check(versionName.isNotBlank()) { "Release 缺少版本标签" }
+
+        val assetName = apkAssetNameFor(versionName, isDebugBuild)
+        val assets = release.optJSONArray("assets") ?: JSONArray()
+        val hasMatchingAsset =
+            (0 until assets.length()).any { index ->
+                val asset = assets.optJSONObject(index) ?: error("Release APK 数据格式无效")
+                asset.optString("name") == assetName
+            }
+        if (!hasMatchingAsset) return null
+
+        return RemoteUpdate(
+            versionName = versionName,
+            changelog = release.optString("body", "").trim(),
+        )
+    }
+
+    internal fun apkAssetNameFor(versionName: String, isDebugBuild: Boolean): String {
+        val cleanVersion = versionName.trim().removePrefix("v")
+        require(cleanVersion.isNotBlank()) { "版本号不能为空" }
+        val channel = if (isDebugBuild) "debug" else "release"
+        return "blbl-android-$cleanVersion-$channel.apk"
     }
 
     internal fun parseChangelog(raw: String): RemoteUpdate {
@@ -178,8 +245,8 @@ object ApkUpdater {
 
     fun apkUrlFor(versionName: String): String {
         val cleanVersion = versionName.trim().removePrefix("v")
-        val channel = if (BuildConfig.DEBUG) "debug" else "release"
-        return "https://cat3399.top/blbl/blbl-$cleanVersion-$channel.apk"
+        val assetName = apkAssetNameFor(versionName, BuildConfig.DEBUG)
+        return "$RELEASE_DOWNLOAD_URL/v$cleanVersion/$assetName"
     }
 
     private data class VersionHeading(
@@ -205,7 +272,7 @@ object ApkUpdater {
 
     suspend fun downloadApkToCache(
         context: Context,
-        url: String = TEST_APK_URL,
+        url: String,
         onProgress: (Progress) -> Unit,
     ): File {
         onProgress(Progress.Connecting)
