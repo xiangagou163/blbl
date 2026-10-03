@@ -20,6 +20,7 @@
     <string name="my_tab_fav">收藏</string>
     <string name="my_tab_bangumi">追番</string>
     <string name="my_tab_drama">追剧</string>
+    <string name="my_tab_collections">合集</string>
     <string name="my_tab_toview">稍后再看</string>
     <string name="my_tab_like">最近点赞</string>
 
@@ -27,11 +28,27 @@
     <string name="my_qr_login">二维码登录</string>
     <string name="my_fav_default_title">默认收藏夹</string>
     <string name="my_fav_item_count_fmt">%1$d个内容</string>
+    <string name="my_collections_empty">还没有追更合集</string>
+    <string name="my_collection_untitled">未命名合集</string>
+    <string name="my_collection_item_meta_fmt">%1$s · %2$d个视频</string>
+    <string name="my_collection_item_count_fmt">%1$d个视频</string>
+    <string name="my_collection_unknown_owner">未知UP主</string>
+    <string name="my_collection_load_failed">追更合集加载失败，可查看 Logcat(标签 BLBL)</string>
+    <string name="my_collection_scan_limited">合集数量较多，已达到单次加载安全上限</string>
+    <string name="my_collection_resume_not_found">已找不到上次播放的分集，请从列表选择</string>
+    <string name="my_collection_resume_button_fmt">继续：%1$s</string>
+    <string name="my_collection_resume_accessibility_fmt">继续观看：%1$s</string>
+    <string name="my_collection_video_count_fmt">%1$d个视频</string>
+    <string name="my_collection_unknown_count">合集</string>
+    <string name="my_collection_owner_meta_fmt">UP主：%1$s</string>
+    <string name="my_collection_owner_count_meta_fmt">UP主：%1$s · 共%2$d集</string>
     <string name="my_episode_section">正片剧集</string>
+    <string name="my_episode_section_count_fmt">%1$s（%2$d）</string>
     <string name="my_episode_order_asc">正序</string>
     <string name="my_episode_order_desc">倒序</string>
     <string name="my_episode_order">剧集顺序</string>
     <string name="my_btn_continue">继续观看</string>
+    <string name="my_btn_play_first">播放第一集</string>
     <string name="my_btn_play">播放</string>
     <string name="my_btn_followed">已追</string>
     <string name="video_card_progress_complete">已看完</string>

@@ -1,9 +1,12 @@
 package blbl.cat3399.feature.my
 
 import androidx.fragment.app.Fragment
+import blbl.cat3399.core.model.FollowedUgcCollection
 
 interface MyNavigator {
     fun openFavFolder(mediaId: Long, title: String)
+
+    fun openFollowedCollection(collection: FollowedUgcCollection)
 
     fun openBangumiDetail(
         seasonId: Long,

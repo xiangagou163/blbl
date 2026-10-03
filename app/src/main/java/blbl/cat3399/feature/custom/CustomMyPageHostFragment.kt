@@ -11,12 +11,14 @@ import blbl.cat3399.core.ui.TabContentFocusTarget
 import blbl.cat3399.databinding.FragmentMyContainerBinding
 import blbl.cat3399.feature.my.BangumiDetailActivity
 import blbl.cat3399.feature.my.MyBangumiFollowFragment
+import blbl.cat3399.feature.my.MyFollowedCollectionDetailFragment
 import blbl.cat3399.feature.my.MyFavFolderDetailFragment
 import blbl.cat3399.feature.my.MyFavFoldersFragment
 import blbl.cat3399.feature.my.MyHistoryFragment
 import blbl.cat3399.feature.my.MyLikeFragment
 import blbl.cat3399.feature.my.MyNavigator
 import blbl.cat3399.feature.my.MyToViewFragment
+import blbl.cat3399.core.model.FollowedUgcCollection
 import blbl.cat3399.ui.BackPressHandler
 import blbl.cat3399.ui.RefreshKeyHandler
 
@@ -54,6 +56,15 @@ class CustomMyPageHostFragment : Fragment(), MyNavigator, BackPressHandler, Refr
         childFragmentManager.beginTransaction()
             .setReorderingAllowed(true)
             .replace(R.id.my_container, MyFavFolderDetailFragment.newInstance(mediaId = mediaId, title = title))
+            .addToBackStack(null)
+            .commit()
+    }
+
+    override fun openFollowedCollection(collection: FollowedUgcCollection) {
+        if (_binding == null || childFragmentManager.isStateSaved) return
+        childFragmentManager.beginTransaction()
+            .setReorderingAllowed(true)
+            .replace(R.id.my_container, MyFollowedCollectionDetailFragment.newInstance(collection))
             .addToBackStack(null)
             .commit()
     }

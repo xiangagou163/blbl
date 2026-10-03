@@ -8,6 +8,7 @@ import blbl.cat3399.core.model.BangumiSeasonDetail
 import blbl.cat3399.core.model.Danmaku
 import blbl.cat3399.core.model.DanmakuUserFilter
 import blbl.cat3399.core.model.FavFolder
+import blbl.cat3399.core.model.FollowedUgcCollection
 import blbl.cat3399.core.model.Following
 import blbl.cat3399.core.model.HistoryEntry
 import blbl.cat3399.core.model.LiveAreaParent
@@ -778,6 +779,132 @@ object BiliApi {
                 out
             }
         return HasMorePage(items = cards, page = pn.coerceAtLeast(1), hasMore = hasMore, total = total)
+    }
+
+    suspend fun followedUgcCollectionsPage(
+        upMid: Long,
+        pn: Int = 1,
+        ps: Int = 20,
+    ): HasMorePage<FollowedUgcCollection> {
+        val safePage = pn.coerceAtLeast(1)
+        val safePageSize = ps.coerceIn(1, 20)
+        val url =
+            BiliClient.withQuery(
+                "https://api.bilibili.com/x/v3/fav/folder/collected/list",
+                mapOf(
+                    "up_mid" to upMid.toString(),
+                    "pn" to safePage.toString(),
+                    "ps" to safePageSize.toString(),
+                    "platform" to "web",
+                ),
+            )
+        val json = BiliClient.getJson(url)
+        val code = json.optInt("code", 0)
+        if (code != 0) {
+            val msg = json.optString("message", json.optString("msg", ""))
+            throw BiliApiException(apiCode = code, apiMessage = msg)
+        }
+
+        val data = json.optJSONObject("data") ?: JSONObject()
+        val list = data.optJSONArray("list") ?: JSONArray()
+        val hasMore = data.optBoolean("has_more", false)
+        // The endpoint's count is not a reliable page total; has_more is authoritative.
+        val total = 0
+        val collections =
+            withContext(Dispatchers.Default) {
+                buildList {
+                    for (i in 0 until list.length()) {
+                        val resource = list.optJSONObject(i) ?: continue
+                        val upper = resource.optJSONObject("upper") ?: JSONObject()
+                        FollowedCollectionMapper.fromSubscriptionFields(
+                            viewerMid = upMid,
+                            type = resource.optInt("type", -1),
+                            seasonId = resource.optLong("id"),
+                            ownerMid = resource.optLong("mid"),
+                            upperMid = upper.optLong("mid"),
+                            ownerName = resource.optString("uname").takeIf { it.isNotBlank() },
+                            upperName = upper.optString("name").takeIf { it.isNotBlank() },
+                            title = resource.optString("title"),
+                            coverUrl = resource.optString("cover"),
+                            description = resource.optString("intro"),
+                            videoCount = resource.optInt("media_count").takeIf { it > 0 },
+                        )?.let(::add)
+                    }
+                }
+            }
+        return HasMorePage(items = collections, page = safePage, hasMore = hasMore, total = total)
+    }
+
+    suspend fun followedSeasonVideos(
+        seasonId: Long,
+        ownerMid: Long,
+        ownerName: String?,
+        pn: Int = 1,
+        ps: Int = 20,
+    ): HasMorePage<VideoCard> {
+        val safePage = pn.coerceAtLeast(1)
+        val safePageSize = ps.coerceIn(1, 20)
+        val url =
+            BiliClient.withQuery(
+                "https://api.bilibili.com/x/space/fav/season/list",
+                mapOf(
+                    "season_id" to seasonId.toString(),
+                    "pn" to safePage.toString(),
+                    "ps" to safePageSize.toString(),
+                ),
+            )
+        val json = BiliClient.getJson(url)
+        val code = json.optInt("code", 0)
+        if (code != 0) {
+            val msg = json.optString("message", json.optString("msg", ""))
+            throw BiliApiException(apiCode = code, apiMessage = msg)
+        }
+
+        val data = json.optJSONObject("data") ?: JSONObject()
+        val info = data.optJSONObject("info") ?: JSONObject()
+        val medias = data.optJSONArray("medias") ?: JSONArray()
+        val total = info.optInt("media_count", 0).coerceAtLeast(0)
+        val cards =
+            withContext(Dispatchers.Default) {
+                buildList {
+                    for (i in 0 until medias.length()) {
+                        val item = medias.optJSONObject(i) ?: continue
+                        val bvid = item.optString("bvid").trim()
+                        if (bvid.isBlank()) continue
+                        val upper = item.optJSONObject("upper") ?: JSONObject()
+                        val counts = item.optJSONObject("cnt_info") ?: JSONObject()
+                        add(
+                            VideoCard(
+                                bvid = bvid,
+                                cid = item.optLong("cid").takeIf { it > 0L },
+                                aid = item.optLong("id").takeIf { it > 0L },
+                                title = item.optString("title"),
+                                coverUrl = item.optString("cover"),
+                                durationSec = item.optInt("duration").coerceAtLeast(0),
+                                ownerName = upper.optString("name").ifBlank { ownerName.orEmpty() },
+                                ownerFace = upper.optString("face").takeIf { it.isNotBlank() },
+                                ownerMid = upper.optLong("mid").takeIf { it > 0L } ?: ownerMid,
+                                view = counts.optLong("play").takeIf { it > 0L },
+                                danmaku = counts.optLong("danmaku").takeIf { it > 0L },
+                                pubDate = item.optLong("pubtime").takeIf { it > 0L },
+                                pubDateText = null,
+                            ),
+                        )
+                    }
+                }
+            }
+        val hasMoreFallback =
+            if (total > 0) {
+                safePage * safePageSize < total
+            } else {
+                medias.length() >= safePageSize
+            }
+        return HasMorePage(
+            items = cards,
+            page = safePage,
+            hasMore = data.optBoolean("has_more", hasMoreFallback),
+            total = total,
+        )
     }
 
     suspend fun bangumiFollowList(

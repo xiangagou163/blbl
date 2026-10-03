@@ -6,6 +6,7 @@ import blbl.cat3399.core.api.video.VideoUgcSeason
 import blbl.cat3399.core.api.video.VideoUgcSeasonEpisode
 import blbl.cat3399.core.log.AppLog
 import blbl.cat3399.core.model.VideoCard
+import blbl.cat3399.core.net.BiliClient
 import blbl.cat3399.feature.video.VideoCardVisibilityFilter
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
@@ -331,6 +332,7 @@ internal object PlayerPlaylistStore {
             order.addLast(token)
             trimLocked()
         }
+        persistFollowedCollectionResume(source, outItems, safeIndex)
         AppLog.d(
             "PlayerPlaylistStore",
             "put size=${outItems.size} cards=${if (hasCards) outCards.size else 0} idx=$safeIndex source=${source.orEmpty()} token=${token.take(8)}",
@@ -347,6 +349,7 @@ internal object PlayerPlaylistStore {
         if (token.isBlank()) return
         val p = store[token] ?: return
         p.index = index.coerceIn(0, (p.items.size - 1).coerceAtLeast(0))
+        persistFollowedCollectionResume(p.source, p.items, p.index)
     }
 
     fun sync(
@@ -377,4 +380,24 @@ internal object PlayerPlaylistStore {
             store.remove(oldest)
         }
     }
+
+    private fun persistFollowedCollectionResume(
+        source: String?,
+        items: List<PlayerPlaylistItem>,
+        index: Int,
+    ) {
+        val collectionSource = FollowedCollectionPlaybackSource.parse(source) ?: return
+        val item = items.getOrNull(index) ?: return
+        val bvid = item.bvid.trim().takeIf { it.isNotBlank() } ?: return
+        runCatching {
+            BiliClient.prefs.setFollowedCollectionLastPlayback(
+                viewerMid = collectionSource.viewerMid,
+                ownerMid = collectionSource.ownerMid,
+                seasonId = collectionSource.seasonId,
+                bvid = bvid,
+                title = item.title,
+            )
+        }
+    }
+
 }

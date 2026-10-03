@@ -14,6 +14,7 @@ import kotlin.math.roundToInt
 class AppPrefs(context: Context) {
     private val appContext = context.applicationContext
     private val prefs = context.getSharedPreferences("blbl_prefs", Context.MODE_PRIVATE)
+    private val playbackStatePrefs = appContext.getSharedPreferences("blbl_playback_state", Context.MODE_PRIVATE)
     private val defaultPlayerTouchGesturesEnabled by lazy(LazyThreadSafetyMode.NONE) { !appContext.isTvDevice() }
 
     var disclaimerAccepted: Boolean
@@ -869,6 +870,47 @@ class AppPrefs(context: Context) {
     var searchHistory: List<String>
         get() = loadStringList(KEY_SEARCH_HISTORY)
         set(value) = saveStringList(KEY_SEARCH_HISTORY, value)
+
+    fun followedCollectionLastBvid(viewerMid: Long, ownerMid: Long, seasonId: Long): String? {
+        if (viewerMid <= 0L || ownerMid <= 0L || seasonId <= 0L) return null
+        return playbackStatePrefs
+            .getString(followedCollectionResumeKey(viewerMid, ownerMid, seasonId, "bvid"), null)
+            ?.trim()
+            ?.takeIf { it.isNotBlank() }
+    }
+
+    fun followedCollectionLastTitle(viewerMid: Long, ownerMid: Long, seasonId: Long): String? {
+        if (viewerMid <= 0L || ownerMid <= 0L || seasonId <= 0L) return null
+        return playbackStatePrefs
+            .getString(followedCollectionResumeKey(viewerMid, ownerMid, seasonId, "title"), null)
+            ?.trim()
+            ?.takeIf { it.isNotBlank() }
+    }
+
+    fun setFollowedCollectionLastPlayback(
+        viewerMid: Long,
+        ownerMid: Long,
+        seasonId: Long,
+        bvid: String,
+        title: String?,
+    ) {
+        if (viewerMid <= 0L || ownerMid <= 0L || seasonId <= 0L) return
+        val bvidKey = followedCollectionResumeKey(viewerMid, ownerMid, seasonId, "bvid")
+        val titleKey = followedCollectionResumeKey(viewerMid, ownerMid, seasonId, "title")
+        val normalizedBvid = bvid.trim()
+        val normalizedTitle = title?.trim().orEmpty()
+        if (normalizedBvid.isBlank()) {
+            playbackStatePrefs.edit().remove(bvidKey).remove(titleKey).apply()
+        } else {
+            playbackStatePrefs.edit()
+                .putString(bvidKey, normalizedBvid)
+                .putString(titleKey, normalizedTitle)
+                .apply()
+        }
+    }
+
+    private fun followedCollectionResumeKey(viewerMid: Long, ownerMid: Long, seasonId: Long, field: String): String =
+        "followed_collection_${field}_${viewerMid}_${ownerMid}_$seasonId"
 
     var gaiaVgateVVoucher: String?
         get() = prefs.getString(KEY_GAIA_VGATE_V_VOUCHER, null)?.trim()?.takeIf { it.isNotBlank() }

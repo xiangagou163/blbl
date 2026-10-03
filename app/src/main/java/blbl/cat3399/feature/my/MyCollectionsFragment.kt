@@ -1,0 +1,208 @@
+package blbl.cat3399.feature.my
+
+import android.os.Bundle
+import android.view.LayoutInflater
+import android.view.View
+import android.view.ViewGroup
+import androidx.core.view.isVisible
+import androidx.fragment.app.Fragment
+import androidx.lifecycle.lifecycleScope
+import androidx.recyclerview.widget.SimpleItemAnimator
+import androidx.recyclerview.widget.StaggeredGridLayoutManager
+import blbl.cat3399.R
+import blbl.cat3399.core.api.BiliApi
+import blbl.cat3399.core.api.FollowedCollectionMapper
+import blbl.cat3399.core.api.FollowedCollectionPaging
+import blbl.cat3399.core.log.AppLog
+import blbl.cat3399.core.model.FollowedUgcCollection
+import blbl.cat3399.core.ui.AppToast
+import blbl.cat3399.core.ui.DpadGridController
+import blbl.cat3399.core.ui.FocusTreeUtils
+import blbl.cat3399.core.ui.postIfAlive
+import blbl.cat3399.databinding.FragmentMyCollectionsBinding
+import blbl.cat3399.ui.RefreshKeyHandler
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.launch
+
+class MyCollectionsFragment : Fragment(), MyTabSwitchFocusTarget, RefreshKeyHandler {
+    private var _binding: FragmentMyCollectionsBinding? = null
+    private val binding get() = _binding!!
+
+    private lateinit var adapter: MyCollectionAdapter
+    private var initialLoadTriggered = false
+    private var requestToken = 0
+    private var pendingRestorePosition: Int? = null
+    private var pendingFocusFirstItemFromTabSwitch = false
+    private var dpadGridController: DpadGridController? = null
+
+    override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
+        _binding = FragmentMyCollectionsBinding.inflate(inflater, container, false)
+        return binding.root
+    }
+
+    override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
+        if (!::adapter.isInitialized) {
+            adapter =
+                MyCollectionAdapter { position, collection ->
+                    pendingRestorePosition = position
+                    findMyNavigator()?.openFollowedCollection(collection)
+                }
+        }
+
+        binding.recycler.adapter = adapter
+        binding.recycler.setHasFixedSize(true)
+        binding.recycler.layoutManager =
+            StaggeredGridLayoutManager(spanCountForWidth(resources), StaggeredGridLayoutManager.VERTICAL).apply {
+                gapStrategy = StaggeredGridLayoutManager.GAP_HANDLING_NONE
+            }
+        (binding.recycler.itemAnimator as? SimpleItemAnimator)?.supportsChangeAnimations = false
+        dpadGridController?.release()
+        dpadGridController =
+            DpadGridController(
+                recyclerView = binding.recycler,
+                callbacks =
+                    object : DpadGridController.Callbacks {
+                        override fun onTopEdge(): Boolean = focusSelectedMyTabIfAvailable()
+
+                        override fun onLeftEdge(): Boolean = switchToPrevMyTabFromContentEdge()
+
+                        override fun onRightEdge() {
+                            switchToNextMyTabFromContentEdge()
+                        }
+
+                        override fun canLoadMore(): Boolean = false
+
+                        override fun loadMore() = Unit
+                    },
+                config = DpadGridController.Config(isEnabled = { _binding != null && isResumed }),
+            ).also { it.install() }
+        binding.swipeRefresh.setOnRefreshListener { reload() }
+        updateEmptyState()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        (binding.recycler.layoutManager as? StaggeredGridLayoutManager)?.spanCount = spanCountForWidth(resources)
+        maybeTriggerInitialLoad()
+        restoreFocusIfNeeded()
+        maybeConsumePendingFocusFirstItemFromTabSwitch()
+    }
+
+    override fun handleRefreshKey(): Boolean {
+        val b = _binding ?: return false
+        if (!isResumed) return false
+        if (b.swipeRefresh.isRefreshing) return true
+        b.swipeRefresh.isRefreshing = true
+        reload()
+        return true
+    }
+
+    override fun requestFocusFirstItemFromTabSwitch(): Boolean {
+        pendingFocusFirstItemFromTabSwitch = true
+        if (!isResumed) return true
+        return maybeConsumePendingFocusFirstItemFromTabSwitch()
+    }
+
+    private fun maybeConsumePendingFocusFirstItemFromTabSwitch(): Boolean {
+        if (!pendingFocusFirstItemFromTabSwitch || !isAdded || _binding == null || !isResumed || !::adapter.isInitialized) return false
+        val focused = activity?.currentFocus
+        if (focused != null && focused != binding.recycler && FocusTreeUtils.isDescendantOf(focused, binding.recycler)) {
+            pendingFocusFirstItemFromTabSwitch = false
+            return false
+        }
+        if (adapter.itemCount <= 0) {
+            binding.recycler.requestFocus()
+            return true
+        }
+        val recycler = binding.recycler
+        recycler.postIfAlive(isAlive = { _binding != null }) {
+            recycler.findViewHolderForAdapterPosition(0)?.itemView?.requestFocus()
+                ?: run {
+                    recycler.scrollToPosition(0)
+                    recycler.postIfAlive(isAlive = { _binding != null }) {
+                        recycler.findViewHolderForAdapterPosition(0)?.itemView?.requestFocus() ?: recycler.requestFocus()
+                    }
+                }
+            pendingFocusFirstItemFromTabSwitch = false
+        }
+        return true
+    }
+
+    private fun maybeTriggerInitialLoad() {
+        if (initialLoadTriggered || !::adapter.isInitialized) return
+        if (adapter.itemCount != 0) {
+            initialLoadTriggered = true
+            return
+        }
+        if (binding.swipeRefresh.isRefreshing) return
+        binding.swipeRefresh.isRefreshing = true
+        reload()
+        initialLoadTriggered = true
+    }
+
+    private fun reload() {
+        val token = ++requestToken
+        binding.emptyState.isVisible = false
+        viewLifecycleOwner.lifecycleScope.launch {
+            try {
+                val nav = BiliApi.nav()
+                val mid = nav.optJSONObject("data")?.optLong("mid") ?: 0L
+                if (mid <= 0L) error("invalid mid")
+                val scan =
+                    FollowedCollectionPaging.loadAll(PAGE_SIZE) { page ->
+                        BiliApi.followedUgcCollectionsPage(upMid = mid, pn = page, ps = PAGE_SIZE)
+                    }
+                if (token != requestToken) return@launch
+                adapter.submit(FollowedCollectionMapper.distinct(scan.items))
+                if (scan.truncated) {
+                    context?.let { AppToast.show(it, getString(R.string.my_collection_scan_limited)) }
+                }
+                updateEmptyState()
+                _binding?.recycler?.postIfAlive(isAlive = { _binding != null }) {
+                    maybeConsumePendingFocusFirstItemFromTabSwitch()
+                }
+                restoreFocusIfNeeded()
+            } catch (t: Throwable) {
+                if (t is CancellationException) throw t
+                AppLog.e("MyCollections", "load failed", t)
+                context?.let { AppToast.show(it, getString(R.string.my_collection_load_failed)) }
+                updateEmptyState()
+            } finally {
+                if (token == requestToken) {
+                    _binding?.swipeRefresh?.isRefreshing = false
+                    updateEmptyState()
+                }
+            }
+        }
+    }
+
+    private fun updateEmptyState() {
+        val b = _binding ?: return
+        b.emptyState.isVisible = !b.swipeRefresh.isRefreshing && adapter.itemCount == 0
+    }
+
+    private fun restoreFocusIfNeeded() {
+        val pos = pendingRestorePosition ?: return
+        if (_binding == null || pos !in 0 until adapter.itemCount) return
+        val recycler = binding.recycler
+        recycler.postIfAlive(isAlive = { _binding != null }) {
+            recycler.scrollToPosition(pos)
+            recycler.postIfAlive(isAlive = { _binding != null }) {
+                recycler.findViewHolderForAdapterPosition(pos)?.itemView?.requestFocus()
+                pendingRestorePosition = null
+            }
+        }
+    }
+
+    override fun onDestroyView() {
+        initialLoadTriggered = false
+        dpadGridController?.release()
+        dpadGridController = null
+        _binding = null
+        super.onDestroyView()
+    }
+
+    companion object {
+        private const val PAGE_SIZE = 20
+    }
+}

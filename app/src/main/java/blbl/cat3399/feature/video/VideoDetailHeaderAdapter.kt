@@ -39,6 +39,7 @@ class VideoDetailHeaderAdapter(
     private val onSeasonOrderClick: () -> Unit,
     private val onPartCardClick: (card: VideoCard, index: Int) -> Unit,
     private val onSeasonCardClick: (card: VideoCard, index: Int) -> Unit,
+    private val onPartsNearEnd: (() -> Unit)? = null,
 ) : RecyclerView.Adapter<VideoDetailHeaderAdapter.Vh>() {
     private var holderRef: WeakReference<Vh>? = null
 
@@ -204,6 +205,7 @@ class VideoDetailHeaderAdapter(
             onSeasonOrderClick = onSeasonOrderClick,
             onPartCardClick = onPartCardClick,
             onSeasonCardClick = onSeasonCardClick,
+            onPartsNearEnd = onPartsNearEnd,
             onDescExpandClick = {
                 if (descExpanded) {
                     false
@@ -282,6 +284,7 @@ class VideoDetailHeaderAdapter(
         private val onSeasonOrderClick: () -> Unit,
         private val onPartCardClick: (card: VideoCard, index: Int) -> Unit,
         private val onSeasonCardClick: (card: VideoCard, index: Int) -> Unit,
+        private val onPartsNearEnd: (() -> Unit)?,
         private val onDescExpandClick: () -> Boolean,
     ) : RecyclerView.ViewHolder(binding.root) {
         private var partsSelectedKey: String? = null
@@ -358,6 +361,19 @@ class VideoDetailHeaderAdapter(
                 LinearLayoutManager(binding.root.context, LinearLayoutManager.HORIZONTAL, false)
             binding.recyclerParts.itemAnimator = null
             binding.recyclerParts.adapter = partsAdapter
+            binding.recyclerParts.addOnScrollListener(
+                object : RecyclerView.OnScrollListener() {
+                    override fun onScrolled(recyclerView: RecyclerView, dx: Int, dy: Int) {
+                        if (dx <= 0) return
+                        val layoutManager = recyclerView.layoutManager as? LinearLayoutManager ?: return
+                        val itemCount = partsAdapter.itemCount
+                        val lastVisible = layoutManager.findLastVisibleItemPosition()
+                        if (itemCount > 0 && itemCount - lastVisible - 1 <= 4) {
+                            onPartsNearEnd?.invoke()
+                        }
+                    }
+                },
+            )
 
             binding.recyclerSeason.layoutManager =
                 LinearLayoutManager(binding.root.context, LinearLayoutManager.HORIZONTAL, false)
