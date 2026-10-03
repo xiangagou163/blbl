@@ -45,6 +45,36 @@ class ApkUpdaterReleaseTest {
     }
 
     @Test
+    fun parseReleases_accepts_debug_asset_name_from_github_release() {
+        val update =
+            ApkUpdater.parseReleases(
+                """
+                [
+                  {
+                    "tag_name": "v0.1.30",
+                    "body": "release notes",
+                    "draft": false,
+                    "prerelease": false,
+                    "assets": [
+                      {
+                        "name": "app-debug.apk",
+                        "label": "blbl-android-0.1.30-debug.apk"
+                      }
+                    ]
+                  }
+                ]
+                """.trimIndent(),
+                isDebugBuild = true,
+            )
+
+        assertEquals("0.1.30", update.versionName)
+        assertEquals(
+            "https://github.com/xiangagou163/blbl/releases/download/v0.1.30/app-debug.apk",
+            ApkUpdater.apkUrlFor(update.versionName),
+        )
+    }
+
+    @Test
     fun parseReleases_reports_when_no_stable_release_is_available() {
         val error =
             assertThrows(IllegalStateException::class.java) {
@@ -57,7 +87,7 @@ class ApkUpdaterReleaseTest {
     @Test
     fun apkAssetNameFor_selects_debug_or_release_asset() {
         assertEquals(
-            "blbl-android-0.3.0-debug.apk",
+            "app-debug.apk",
             ApkUpdater.apkAssetNameFor("v0.3.0", isDebugBuild = true),
         )
         assertEquals(
@@ -72,7 +102,7 @@ class ApkUpdaterReleaseTest {
             ApkUpdater.apkUrlFor("v0.3.0")
                 .startsWith("https://github.com/xiangagou163/blbl/releases/download/v0.3.0/"),
         )
-        assertTrue(ApkUpdater.apkUrlFor("0.3.0").endsWith("-debug.apk"))
+        assertTrue(ApkUpdater.apkUrlFor("0.3.0").endsWith("/app-debug.apk"))
     }
 
     private fun release(
@@ -82,7 +112,7 @@ class ApkUpdaterReleaseTest {
     ): String {
         val debugAsset =
             if (includeDebugApk) {
-                """{"name":"blbl-android-${tagName.removePrefix("v")}-debug.apk"},"""
+                """{"name":"app-debug.apk","label":"blbl-android-${tagName.removePrefix("v")}-debug.apk"},"""
             } else {
                 ""
             }

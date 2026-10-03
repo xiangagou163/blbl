@@ -67,7 +67,7 @@
 ```
 
 ## 更新检查
-应用从本仓库的 GitHub Releases 检查稳定版本，并下载与当前安装包类型匹配的 APK。发布时请将 `blbl-android-<version>-debug.apk` 和 `blbl-android-<version>-release.apk` 上传到对应的版本 Release。
+应用从本仓库的 GitHub Releases 检查稳定版本，并下载与当前安装包类型匹配的 APK。发布时，正式版资产使用 `blbl-android-<version>-release.apk`；Debug 资产实际文件名为 `app-debug.apk`，可将 `blbl-android-<version>-debug.apk` 作为 Release 中的显示标签。
 
 ## GitHub Actions
 

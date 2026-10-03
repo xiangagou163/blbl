@@ -203,8 +203,11 @@ object ApkUpdater {
     internal fun apkAssetNameFor(versionName: String, isDebugBuild: Boolean): String {
         val cleanVersion = versionName.trim().removePrefix("v")
         require(cleanVersion.isNotBlank()) { "版本号不能为空" }
-        val channel = if (isDebugBuild) "debug" else "release"
-        return "blbl-android-$cleanVersion-$channel.apk"
+        return if (isDebugBuild) {
+            "app-debug.apk"
+        } else {
+            "blbl-android-$cleanVersion-release.apk"
+        }
     }
 
     internal fun parseChangelog(raw: String): RemoteUpdate {
