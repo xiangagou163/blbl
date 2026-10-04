@@ -30,6 +30,7 @@ import blbl.cat3399.core.log.LogUploadClient
 import blbl.cat3399.core.net.BiliClient
 import blbl.cat3399.core.prefs.AppConfigBackup
 import blbl.cat3399.core.prefs.AppPrefs
+import blbl.cat3399.core.history.PlaybackHistoryMode
 import blbl.cat3399.core.prefs.CustomPageConfig
 import blbl.cat3399.core.prefs.CustomPageTabConfig
 import blbl.cat3399.core.prefs.PlayerCustomShortcut
@@ -1317,6 +1318,20 @@ class SettingsInteractionHandler(
             SettingId.PlayerAutoResumeEnabled -> {
                 prefs.playerAutoResumeEnabled = !prefs.playerAutoResumeEnabled
                 renderer.refreshSection(entry.id)
+            }
+
+            SettingId.PlaybackHistoryPrivacy -> {
+                val modes = PlaybackHistoryMode.entries
+                val options = modes.map(SettingsText::playbackHistoryModeText)
+                showChoiceDialog(
+                    title = "播放记录与隐私",
+                    items = options,
+                    current = SettingsText.playbackHistoryModeText(prefs.playbackHistoryMode),
+                ) { selected ->
+                    val selectedIndex = options.indexOf(selected).takeIf { it >= 0 } ?: 0
+                    prefs.playbackHistoryMode = modes.getOrElse(selectedIndex) { PlaybackHistoryMode.SERVER }
+                    renderer.refreshSection(entry.id)
+                }
             }
 
             SettingId.PlayerAutoSkipSegmentsEnabled -> {

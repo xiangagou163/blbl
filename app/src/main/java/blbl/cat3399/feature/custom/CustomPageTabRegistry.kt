@@ -53,6 +53,7 @@ object CustomPageTabRegistry {
     const val TYPE_SEARCH_BANGUMI = "search_bangumi"
     const val TYPE_DYNAMIC_VIDEO = "dynamic_video"
     const val TYPE_MY_HISTORY = "my_history"
+    const val TYPE_MY_LOCAL_HISTORY = "my_local_history"
     const val TYPE_MY_FAV = "my_fav"
     const val TYPE_MY_BANGUMI = "my_bangumi"
     const val TYPE_MY_DRAMA = "my_drama"
@@ -245,6 +246,7 @@ object CustomPageTabRegistry {
             add(CustomPageTabConfig(sourceType = TYPE_LIVE_RECOMMEND))
             add(CustomPageTabConfig(sourceType = TYPE_LIVE_FOLLOWING))
             add(CustomPageTabConfig(sourceType = TYPE_MY_HISTORY))
+            add(CustomPageTabConfig(sourceType = TYPE_MY_LOCAL_HISTORY))
             add(CustomPageTabConfig(sourceType = TYPE_MY_FAV))
             add(CustomPageTabConfig(sourceType = TYPE_MY_BANGUMI))
             add(CustomPageTabConfig(sourceType = TYPE_MY_DRAMA))
@@ -385,6 +387,16 @@ object CustomPageTabRegistry {
                     itemOrder = 10,
                     requiresLogin = true,
                     createFragment = { CustomMyPageHostFragment.newHistory() },
+                )
+
+            TYPE_MY_LOCAL_HISTORY ->
+                Descriptor(
+                    stableKey = TYPE_MY_LOCAL_HISTORY,
+                    managerLabel = "我的-本地历史",
+                    tabTitle = "本地历史",
+                    groupKey = GROUP_MY,
+                    itemOrder = 15,
+                    createFragment = { CustomMyPageHostFragment.newLocalHistory() },
                 )
 
             TYPE_MY_FAV ->

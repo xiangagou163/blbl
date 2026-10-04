@@ -4,6 +4,7 @@ import android.os.SystemClock
 import androidx.lifecycle.lifecycleScope
 import blbl.cat3399.R
 import blbl.cat3399.core.api.BiliApi
+import blbl.cat3399.core.history.persistSearchHistoryIfAllowed
 import blbl.cat3399.core.log.AppLog
 import blbl.cat3399.core.net.BiliClient
 import blbl.cat3399.core.paging.PagedGridStateMachine
@@ -142,7 +143,10 @@ class SearchInteractor(
         // Ensure query and UI reflect the actual keyword used.
         setQuery(keyword)
 
-        BiliClient.prefs.addSearchHistory(keyword)
+        val prefs = BiliClient.prefs
+        persistSearchHistoryIfAllowed(prefs.playbackHistoryMode, keyword) { term ->
+            prefs.addSearchHistory(term)
+        }
         reloadHistory()
 
         renderer.hideImeAndClearQueryFocusIfNeeded()
