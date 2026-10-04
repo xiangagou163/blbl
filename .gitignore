@@ -24,3 +24,5 @@ libs/
 docs/*
 !docs/agents/
 !docs/agents/**
+!docs/specs/
+!docs/specs/**
