@@ -47,6 +47,7 @@ import blbl.cat3399.feature.login.QrLoginActivity
 import blbl.cat3399.feature.player.engine.IjkPlayerPlugin
 import blbl.cat3399.feature.player.engine.IjkPlayerPluginUi
 import blbl.cat3399.feature.settings.SettingsActivity
+import blbl.cat3399.feature.search.SearchFragment
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
@@ -54,7 +55,7 @@ import org.json.JSONObject
 import java.lang.ref.WeakReference
 import java.util.Locale
 
-class MainActivity : BaseActivity(), SidebarFocusHost {
+class MainActivity : BaseActivity(), SidebarFocusHost, SearchNavigationHost {
     private enum class UserInfoOverlayMode {
         PROFILE,
         ACCOUNT_SWITCH,
@@ -197,6 +198,24 @@ class MainActivity : BaseActivity(), SidebarFocusHost {
 
     private fun resolveLaunchNavId(): Int {
         return MainRootNavRegistry.resolveLaunchNavId(BiliClient.prefs.startupPage)
+    }
+
+    override fun openSearchForKeyword(keyword: String) {
+        val term = keyword.trim()
+        if (term.isBlank()) {
+            AppLog.w("Search", "calendar requested an empty search term")
+            return
+        }
+        navAdapter.select(SidebarNavAdapter.ID_SEARCH, trigger = true)
+        binding.root.post {
+            val search = currentRootFragment() as? SearchFragment
+            if (search == null) {
+                AppLog.e("Search", "search root was unavailable after calendar navigation")
+                AppToast.show(this, getString(R.string.bangumi_calendar_search_unavailable))
+                return@post
+            }
+            search.submitKeywordFromCalendar(term)
+        }
     }
 
     private fun isAtLaunchRoot(fragment: Fragment?): Boolean {

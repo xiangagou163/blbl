@@ -881,7 +881,7 @@ class SettingsInteractionHandler(
                     focusId = entry.id,
                     title = "主页显示页面",
                     options = HomeTabs.all.map { it.key to activity.getString(it.titleRes) },
-                    selectedKeys = prefs.mainHomeVisibleTabs,
+                    selectedKeys = HomeTabs.selectedKeysForUi(prefs.mainHomeVisibleTabs),
                 ) { prefs.mainHomeVisibleTabs = it }
             }
 
