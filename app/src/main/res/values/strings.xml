@@ -80,6 +80,8 @@
     <string name="search_clear">清空</string>
     <string name="search_backspace">后退</string>
     <string name="search_action">搜索</string>
+    <string name="search_phone_input_title">手机扫码输入</string>
+    <string name="search_phone_input_qr_description">手机扫码输入二维码</string>
     <string name="search_clear_history">清空搜索记录</string>
     <string name="search_tab_video">视频</string>
     <string name="search_tab_bangumi">番剧</string>

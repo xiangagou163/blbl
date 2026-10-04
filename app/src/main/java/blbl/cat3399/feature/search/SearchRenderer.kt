@@ -13,6 +13,7 @@ import androidx.recyclerview.widget.RecyclerView
 import androidx.recyclerview.widget.SimpleItemAnimator
 import androidx.recyclerview.widget.StaggeredGridLayoutManager
 import blbl.cat3399.R
+import blbl.cat3399.core.phoneinput.PhoneInputServer
 import blbl.cat3399.core.net.BiliClient
 import blbl.cat3399.core.paging.PagedGridStateMachine
 import blbl.cat3399.core.ui.DpadGridController
@@ -42,6 +43,7 @@ class SearchRenderer internal constructor(
     private val adapters: SearchAdapters,
 ) {
     private val viewContext: Context = binding.root.context
+    private val phoneInputServer = PhoneInputServer()
     private var released: Boolean = false
 
     val keyAdapter: SearchKeyAdapter get() = adapters.keyAdapter
@@ -353,6 +355,28 @@ class SearchRenderer internal constructor(
 
         updateQueryUi()
         updateClearHistoryButton(state.query)
+        setupPhoneInput()
+    }
+
+    private fun setupPhoneInput() {
+        val url = PhoneInputServer.buildUrl() ?: return
+        if (!phoneInputServer.start()) return
+
+        val qr = PhoneInputServer.generateQrBitmap(url)
+        if (qr == null) {
+            phoneInputServer.stop()
+            return
+        }
+
+        phoneInputServer.setListener(
+            PhoneInputServer.Listener { text, action ->
+                interactor.setQuery(text)
+                if (action == PhoneInputServer.Action.SEARCH) interactor.performSearch()
+            },
+        )
+        binding.ivPhoneInputQr.setImageBitmap(qr)
+        binding.tvPhoneInputUrl.text = url
+        binding.panelPhoneInput.visibility = View.VISIBLE
     }
 
     private fun setupQueryInput() {
@@ -636,6 +660,8 @@ class SearchRenderer internal constructor(
     fun release() {
         if (released) return
         released = true
+        phoneInputServer.setListener(null)
+        phoneInputServer.stop()
         resultsGridController?.release()
         resultsGridController = null
         suggestGridController?.release()
@@ -1238,7 +1264,11 @@ class SearchRenderer internal constructor(
         rescaleMargins(binding.panelResults, start = false, top = true, end = false, bottom = false)
 
         rescaleMargins(binding.panelKeyboard, start = true, top = false, end = true, bottom = false)
+        rescaleMargins(binding.panelPhoneInput, start = false, top = false, end = true, bottom = false)
         rescaleMargins(binding.recyclerKeys, start = false, top = true, end = false, bottom = false)
+        rescaleLayoutSize(binding.ivPhoneInputQr)
+        rescaleTextSize(binding.tvPhoneInputTitle)
+        rescaleTextSize(binding.tvPhoneInputUrl)
 
         listOf(binding.btnClear, binding.btnBackspace, binding.btnSearch, binding.btnClearHistory, binding.btnSort).forEach(::rescaleCard)
 

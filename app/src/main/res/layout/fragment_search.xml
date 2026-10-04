@@ -165,6 +165,47 @@
         </LinearLayout>
 
         <LinearLayout
+            android:id="@+id/panel_phone_input"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_marginEnd="12dp"
+            android:layout_weight="0.72"
+            android:gravity="center_horizontal"
+            android:orientation="vertical"
+            android:paddingTop="@dimen/focus_safe_padding_v"
+            android:paddingBottom="@dimen/focus_safe_padding_v"
+            android:visibility="gone">
+
+            <TextView
+                android:id="@+id/tv_phone_input_title"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center"
+                android:text="@string/search_phone_input_title"
+                android:textColor="?attr/blblOnPageBackdrop"
+                android:textSize="14sp"
+                android:textStyle="bold" />
+
+            <ImageView
+                android:id="@+id/iv_phone_input_qr"
+                android:layout_width="128dp"
+                android:layout_height="128dp"
+                android:layout_marginTop="8dp"
+                android:contentDescription="@string/search_phone_input_qr_description"
+                android:scaleType="fitCenter" />
+
+            <TextView
+                android:id="@+id/tv_phone_input_url"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:gravity="center"
+                android:maxLines="3"
+                android:textColor="?attr/blblOnPageBackdropSecondary"
+                android:textSize="11sp" />
+        </LinearLayout>
+
+        <LinearLayout
             android:id="@+id/panel_history"
             android:layout_width="0dp"
             android:layout_height="match_parent"
