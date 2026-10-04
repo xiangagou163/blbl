@@ -18,6 +18,15 @@ object HomeTabs {
     const val KEY_POPULAR = "popular"
     const val KEY_BANGUMI = "bangumi"
     const val KEY_CINEMA = "cinema"
+    const val KEY_BANGUMI_CALENDAR = "bangumi_calendar"
+
+    val defaultVisibleKeys: List<String> =
+        listOf(
+            KEY_RECOMMEND,
+            KEY_POPULAR,
+            KEY_BANGUMI,
+            KEY_CINEMA,
+        )
 
     val all: List<HomeTabSpec> =
         listOf(
@@ -25,14 +34,20 @@ object HomeTabs {
             HomeTabSpec(KEY_POPULAR, R.string.tab_popular) { VideoGridFragment.newPopular() },
             HomeTabSpec(KEY_BANGUMI, R.string.tab_bangumi) { PgcRecommendGridFragment.newBangumi() },
             HomeTabSpec(KEY_CINEMA, R.string.tab_cinema) { PgcRecommendGridFragment.newCinema() },
+            HomeTabSpec(KEY_BANGUMI_CALENDAR, R.string.tab_bangumi_calendar) { BangumiCalendarFragment.newInstance() },
         )
 
-    fun visibleTabs(prefs: AppPrefs): List<HomeTabSpec> = filterVisible(all, prefs.mainHomeVisibleTabs)
+    fun visibleTabs(prefs: AppPrefs): List<HomeTabSpec> = visibleTabs(prefs.mainHomeVisibleTabs)
 
-    private fun filterVisible(allTabs: List<HomeTabSpec>, selectedKeys: List<String>): List<HomeTabSpec> {
-        if (selectedKeys.isEmpty()) return allTabs
+    fun visibleTabs(selectedKeys: List<String>): List<HomeTabSpec> {
+        val selected = selectedKeysForUi(selectedKeys).toSet()
+        return all.filter { it.key in selected }
+    }
+
+    fun selectedKeysForUi(selectedKeys: List<String>): List<String> {
         val selected = selectedKeys.toSet()
-        return allTabs.filter { it.key in selected }.ifEmpty { allTabs }
+        val resolved = all.map { it.key }.filter { it in selected }
+        return resolved.ifEmpty { defaultVisibleKeys }
     }
 }
 

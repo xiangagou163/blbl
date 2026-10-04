@@ -121,7 +121,7 @@ object SettingsText {
     fun mainHomeVisibleTabsText(context: Context, selectedKeys: List<String>): String {
         return visibleTabsText(
             options = HomeTabs.all.map { it.key to context.getString(it.titleRes) },
-            selectedKeys = selectedKeys,
+            selectedKeys = HomeTabs.selectedKeysForUi(selectedKeys),
         )
     }
 
