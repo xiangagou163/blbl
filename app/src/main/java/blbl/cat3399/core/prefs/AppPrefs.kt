@@ -3,6 +3,9 @@ package blbl.cat3399.core.prefs
 import android.content.Context
 import android.provider.Settings
 import blbl.cat3399.core.api.SponsorBlockCategories
+import blbl.cat3399.core.history.LocalPlaybackHistoryRepository
+import blbl.cat3399.core.history.PlaybackHistoryMode
+import blbl.cat3399.core.history.SharedPreferencesPlaybackHistoryPersistence
 import blbl.cat3399.core.tv.isTvDevice
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import org.json.JSONArray
@@ -15,7 +18,14 @@ class AppPrefs(context: Context) {
     private val appContext = context.applicationContext
     private val prefs = context.getSharedPreferences("blbl_prefs", Context.MODE_PRIVATE)
     private val playbackStatePrefs = appContext.getSharedPreferences("blbl_playback_state", Context.MODE_PRIVATE)
+    private val localPlaybackHistoryPrefs by lazy(LazyThreadSafetyMode.NONE) {
+        appContext.getSharedPreferences("blbl_local_playback_history", Context.MODE_PRIVATE)
+    }
     private val defaultPlayerTouchGesturesEnabled by lazy(LazyThreadSafetyMode.NONE) { !appContext.isTvDevice() }
+
+    val localPlaybackHistory: LocalPlaybackHistoryRepository by lazy(LazyThreadSafetyMode.NONE) {
+        LocalPlaybackHistoryRepository(SharedPreferencesPlaybackHistoryPersistence(localPlaybackHistoryPrefs))
+    }
 
     var disclaimerAccepted: Boolean
         get() = prefs.getBoolean(KEY_DISCLAIMER_ACCEPTED, false)
@@ -543,6 +553,10 @@ class AppPrefs(context: Context) {
     var playerAutoResumeEnabled: Boolean
         get() = prefs.getBoolean(KEY_PLAYER_AUTO_RESUME_ENABLED, true)
         set(value) = prefs.edit().putBoolean(KEY_PLAYER_AUTO_RESUME_ENABLED, value).apply()
+
+    var playbackHistoryMode: PlaybackHistoryMode
+        get() = PlaybackHistoryMode.fromPreferenceValue(prefs.getString(KEY_PLAYBACK_HISTORY_MODE, null))
+        set(value) = prefs.edit().putString(KEY_PLAYBACK_HISTORY_MODE, value.preferenceValue).apply()
 
     var playerAutoSkipSegmentsEnabled: Boolean
         get() = prefs.getBoolean(KEY_PLAYER_AUTO_SKIP_SEGMENTS_ENABLED, false)
@@ -1156,6 +1170,7 @@ class AppPrefs(context: Context) {
         private const val KEY_PLAYER_HOLD_SCRUB_TRAVERSE_SECONDS = "player_hold_scrub_traverse_seconds"
         private const val KEY_PLAYER_HOLD_SCRUB_FIXED_STEP_SECONDS = "player_hold_scrub_fixed_step_seconds"
         private const val KEY_PLAYER_AUTO_RESUME_ENABLED = "player_auto_resume_enabled"
+        private const val KEY_PLAYBACK_HISTORY_MODE = "playback_history_mode"
         private const val KEY_PLAYER_AUTO_SKIP_SEGMENTS_ENABLED = "player_auto_skip_segments_enabled"
         private const val KEY_PLAYER_AUTO_SKIP_SEGMENT_CATEGORIES = "player_auto_skip_segment_categories"
         private const val KEY_PLAYER_AUTO_SKIP_SERVER_BASE_URL = "player_auto_skip_server_base_url"

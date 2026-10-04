@@ -25,6 +25,7 @@ class SearchFragment : Fragment(), BackPressHandler, RefreshKeyHandler {
     private lateinit var adapters: SearchAdapters
     private var renderer: SearchRenderer? = null
     private var interactor: SearchInteractor? = null
+    private var pendingCalendarKeyword: String? = null
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
         _binding = FragmentSearchBinding.inflate(inflater, container, false)
@@ -52,7 +53,10 @@ class SearchFragment : Fragment(), BackPressHandler, RefreshKeyHandler {
         } else {
             renderer.showInput()
         }
-        if (savedInstanceState == null) {
+        val pendingKeyword = pendingCalendarKeyword
+        if (pendingKeyword != null) {
+            submitKeywordFromCalendar(pendingKeyword)
+        } else if (savedInstanceState == null) {
             renderer.focusFirstKey()
         }
     }
@@ -123,6 +127,18 @@ class SearchFragment : Fragment(), BackPressHandler, RefreshKeyHandler {
 
     internal fun onSearchKeywordClicked(keyword: String) {
         interactor?.onKeywordClicked(keyword)
+    }
+
+    internal fun submitKeywordFromCalendar(keyword: String) {
+        val term = keyword.trim()
+        if (term.isBlank()) return
+        val currentInteractor = interactor
+        if (currentInteractor == null) {
+            pendingCalendarKeyword = term
+            return
+        }
+        pendingCalendarKeyword = null
+        currentInteractor.onKeywordClicked(term)
     }
 
     internal fun removeSearchHistoryAndRestoreFocus(keyword: String, position: Int) {

@@ -11,6 +11,8 @@ import blbl.cat3399.core.api.SponsorBlockCategories
 import blbl.cat3399.core.api.video.VideoPlayResume
 import blbl.cat3399.core.api.video.VideoPlayStream
 import blbl.cat3399.core.api.video.VideoResumeTimeUnit
+import blbl.cat3399.core.history.PlaybackHistoryMode
+import blbl.cat3399.core.history.PlaybackHistoryPolicy
 import blbl.cat3399.core.log.AppLog
 import blbl.cat3399.core.net.BiliClient
 import blbl.cat3399.feature.player.engine.BlblPlayerEngine
@@ -488,13 +490,28 @@ private fun PlayerActivity.consumeIntentResumeCandidate(cid: Long): ResumeCandid
     pendingIntentResumeCid = null
     pendingIntentResumeEpId = null
     if (candidate == null) return null
-    return candidate.takeIf {
-        resumeIntentMatchesCurrentMedia(
+    if (
+        !resumeIntentMatchesCurrentMedia(
             currentCid = cid,
             currentEpId = currentEpId,
             expectedCid = expectedCid,
             expectedEpId = expectedEpId,
         )
+    ) {
+        return null
+    }
+    val expectedWorkId = intent.getStringExtra(PlayerActivity.EXTRA_LOCAL_HISTORY_WORK_ID)
+    val expectedEpisodeId = intent.getStringExtra(PlayerActivity.EXTRA_LOCAL_HISTORY_EPISODE_ID)
+    if (expectedWorkId == null && expectedEpisodeId == null) return candidate
+    if (expectedWorkId.isNullOrBlank() || expectedEpisodeId.isNullOrBlank()) return null
+    val currentMedia =
+        buildLocalPlaybackHistoryRecord(
+            progressMs = 0L,
+            durationMs = 0L,
+            watchedAtMs = 0L,
+        ) ?: return null
+    return candidate.takeIf {
+        currentMedia.workId == expectedWorkId && currentMedia.episodeId == expectedEpisodeId
     }
 }
 
@@ -509,10 +526,19 @@ internal suspend fun PlayerActivity.resolveInitialAutoResume(
     if (autoResumeCancelledByUser) return null
     if (playbackToken != autoResumeToken) return null
 
+    val mode = BiliClient.prefs.playbackHistoryMode
     val durationMs = currentViewDurationMs
+    if (mode == PlaybackHistoryMode.PRIVATE) return null
+    if (mode == PlaybackHistoryMode.LOCAL_ONLY) {
+        if (!intent.hasExtra(PlayerActivity.EXTRA_LOCAL_HISTORY_WORK_ID)) return null
+        if (!intent.hasExtra(PlayerActivity.EXTRA_LOCAL_HISTORY_EPISODE_ID)) return null
+        val candidate = intentCandidate ?: return null
+        return resolveInitialResumePosition(candidate = candidate, durationMs = durationMs)
+    }
     intentCandidate?.let { candidate ->
         return resolveInitialResumePosition(candidate = candidate, durationMs = durationMs)
     }
+    if (!PlaybackHistoryPolicy.forMode(mode).readRemoteProgress) return null
 
     val strictCidMatch = isMultiPagePlaylist(partsListItems, currentBvid)
     val playStreamResume = playStream.resume

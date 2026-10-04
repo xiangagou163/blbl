@@ -10,6 +10,7 @@ import blbl.cat3399.core.api.SponsorBlockCategories
 import blbl.cat3399.core.prefs.AppPrefs
 import blbl.cat3399.core.prefs.CustomPageConfig
 import blbl.cat3399.core.prefs.PlayerPlaybackModes
+import blbl.cat3399.core.history.PlaybackHistoryMode
 import blbl.cat3399.feature.category.CategoryZones
 import blbl.cat3399.feature.custom.CustomPageTabRegistry
 import blbl.cat3399.feature.home.HomeTabs
@@ -120,7 +121,7 @@ object SettingsText {
     fun mainHomeVisibleTabsText(context: Context, selectedKeys: List<String>): String {
         return visibleTabsText(
             options = HomeTabs.all.map { it.key to context.getString(it.titleRes) },
-            selectedKeys = selectedKeys,
+            selectedKeys = HomeTabs.selectedKeysForUi(selectedKeys),
         )
     }
 
@@ -395,6 +396,13 @@ object SettingsText {
         )
 
     fun playbackModeText(code: String): String = PlayerPlaybackModes.label(code)
+
+    fun playbackHistoryModeText(mode: PlaybackHistoryMode): String =
+        when (mode) {
+            PlaybackHistoryMode.SERVER -> "服务端记录（默认）"
+            PlaybackHistoryMode.LOCAL_ONLY -> "本地有痕，网络无痕"
+            PlaybackHistoryMode.PRIVATE -> "完全无痕"
+        }
 
     fun qnText(qn: Int): String =
         when (qn) {

@@ -362,6 +362,12 @@ class SettingsRenderer(
                     ),
                     SettingEntry(SettingId.PlayerAutoResumeEnabled, "自动跳到上次播放位置", if (prefs.playerAutoResumeEnabled) "开" else "关", null),
                     SettingEntry(
+                        SettingId.PlaybackHistoryPrivacy,
+                        "播放记录与隐私",
+                        SettingsText.playbackHistoryModeText(prefs.playbackHistoryMode),
+                        "控制播放进度和搜索词是否保存到本机或哔哩哔哩",
+                    ),
+                    SettingEntry(
                         SettingId.PlayerAutoSkipSegmentsEnabled,
                         "自动跳过片段（空降助手）",
                         if (prefs.playerAutoSkipSegmentsEnabled) "开" else "关",

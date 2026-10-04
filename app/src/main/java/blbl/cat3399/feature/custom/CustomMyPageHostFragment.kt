@@ -15,6 +15,7 @@ import blbl.cat3399.feature.my.MyFollowedCollectionDetailFragment
 import blbl.cat3399.feature.my.MyFavFolderDetailFragment
 import blbl.cat3399.feature.my.MyFavFoldersFragment
 import blbl.cat3399.feature.my.MyHistoryFragment
+import blbl.cat3399.feature.my.LocalPlaybackHistoryFragment
 import blbl.cat3399.feature.my.MyLikeFragment
 import blbl.cat3399.feature.my.MyNavigator
 import blbl.cat3399.feature.my.MyToViewFragment
@@ -128,6 +129,7 @@ class CustomMyPageHostFragment : Fragment(), MyNavigator, BackPressHandler, Refr
     private fun createRootFragment(): Fragment {
         return when (pageKind) {
             KIND_HISTORY -> MyHistoryFragment()
+            KIND_LOCAL_HISTORY -> LocalPlaybackHistoryFragment()
             KIND_FAV -> MyFavFoldersFragment()
             KIND_BANGUMI -> MyBangumiFollowFragment.newInstance(type = 1)
             KIND_DRAMA -> MyBangumiFollowFragment.newInstance(type = 2)
@@ -141,6 +143,7 @@ class CustomMyPageHostFragment : Fragment(), MyNavigator, BackPressHandler, Refr
         private const val ARG_PAGE_KIND = "page_kind"
 
         private const val KIND_HISTORY = "history"
+        private const val KIND_LOCAL_HISTORY = "local_history"
         private const val KIND_FAV = "fav"
         private const val KIND_BANGUMI = "bangumi"
         private const val KIND_DRAMA = "drama"
@@ -148,6 +151,8 @@ class CustomMyPageHostFragment : Fragment(), MyNavigator, BackPressHandler, Refr
         private const val KIND_LIKE = "like"
 
         fun newHistory() = newInstance(KIND_HISTORY)
+
+        fun newLocalHistory() = newInstance(KIND_LOCAL_HISTORY)
 
         fun newFav() = newInstance(KIND_FAV)
 

@@ -63,6 +63,8 @@ import blbl.cat3399.core.api.video.VideoSubtitle
 import blbl.cat3399.core.api.video.VideoTrackInfo
 import blbl.cat3399.core.api.video.VideoTrack
 import blbl.cat3399.core.api.SponsorBlockApi
+import blbl.cat3399.core.history.PlaybackHistoryPolicy
+import blbl.cat3399.core.history.recordPlaybackProgress
 import blbl.cat3399.core.log.AppLog
 import blbl.cat3399.core.model.DanmakuShield
 import blbl.cat3399.core.model.VideoCard
@@ -615,6 +617,16 @@ class PlayerActivity : BaseActivity() {
         }
         val exo = player ?: return
         val progressSec = (exo.currentPosition.coerceAtLeast(0L) / 1000L)
+        val localRecord =
+            if (shouldSaveLocalProgressNow()) {
+                buildLocalPlaybackHistoryRecord(
+                    progressMs = exo.currentPosition,
+                    durationMs = exo.duration.takeIf { it > 0L } ?: currentViewDurationMs ?: 0L,
+                    watchedAtMs = System.currentTimeMillis(),
+                )
+            } else {
+                null
+            }
 
         val tChecks0 = SystemClock.elapsedRealtime()
         val shouldHistory = shouldReportHistoryNow()
@@ -625,10 +637,11 @@ class PlayerActivity : BaseActivity() {
             exitTraceLog(
                 "exitReport:check",
                 "reason=$reason history=${if (shouldHistory) 1 else 0} heartbeat=${if (shouldHeartbeat) 1 else 0} " +
+                    "local=${if (localRecord != null) 1 else 0} " +
                     "costHistory=${tChecks1 - tChecks0}ms costHeartbeat=${tChecks2 - tChecks1}ms total=${tChecks2 - tChecks0}ms",
             )
         }
-        if (!shouldHistory && !shouldHeartbeat) return
+        if (!shouldHistory && !shouldHeartbeat && localRecord == null) return
 
         val cid = currentCid
         val aid = currentAid
@@ -641,33 +654,48 @@ class PlayerActivity : BaseActivity() {
         if (shouldHistory && aid != null) trace?.log("report:history:enqueue", "sec=$progressSec reason=$reason")
         if (shouldHeartbeat) trace?.log("report:heartbeat:enqueue", "sec=$progressSec type=$heartbeatType reason=$reason")
         BlblApp.launchIo {
-            if (shouldHistory && aid != null) {
-                runCatching {
-                    BiliApi.historyReport(aid = aid, cid = cid, progressSec = progressSec, platform = "android")
-                }.onSuccess {
-                    trace?.log("report:history", "ok=1 sec=$progressSec reason=$reason")
-                }.onFailure {
-                    trace?.log("report:history", "ok=0 sec=$progressSec reason=$reason")
-                }
-            }
-            if (shouldHeartbeat) {
-                runCatching {
-                    BiliApi.webHeartbeat(
-                        aid = aid,
-                        bvid = currentBvid,
-                        cid = cid,
-                        epId = epId.takeIf { isPgc },
-                        seasonId = seasonId.takeIf { isPgc },
-                        playedTimeSec = progressSec,
-                        type = heartbeatType,
-                        playType = exitPlayType,
-                    )
-                }.onSuccess {
-                    trace?.log("report:heartbeat", "ok=1 sec=$progressSec type=$heartbeatType reason=$reason")
-                }.onFailure {
-                    trace?.log("report:heartbeat", "ok=0 sec=$progressSec type=$heartbeatType reason=$reason")
-                }
-            }
+            recordPlaybackProgress(
+                mode = BiliClient.prefs.playbackHistoryMode,
+                localRecord = localRecord,
+                remoteProgressEligible = shouldHistory || shouldHeartbeat,
+                saveLocal = { record ->
+                    runCatching { BiliClient.prefs.localPlaybackHistory.upsert(record) }
+                        .onSuccess { trace?.log("report:local_history", "ok=1 sec=$progressSec reason=$reason") }
+                        .onFailure {
+                            AppLog.e("Player", "local playback history save failed reason=$reason", it)
+                            trace?.log("report:local_history", "ok=0 sec=$progressSec reason=$reason")
+                        }
+                },
+                reportRemote = {
+                    if (shouldHistory && aid != null) {
+                        runCatching {
+                            BiliApi.historyReport(aid = aid, cid = cid, progressSec = progressSec, platform = "android")
+                        }.onSuccess {
+                            trace?.log("report:history", "ok=1 sec=$progressSec reason=$reason")
+                        }.onFailure {
+                            trace?.log("report:history", "ok=0 sec=$progressSec reason=$reason")
+                        }
+                    }
+                    if (shouldHeartbeat) {
+                        runCatching {
+                            BiliApi.webHeartbeat(
+                                aid = aid,
+                                bvid = currentBvid,
+                                cid = cid,
+                                epId = epId.takeIf { isPgc },
+                                seasonId = seasonId.takeIf { isPgc },
+                                playedTimeSec = progressSec,
+                                type = heartbeatType,
+                                playType = exitPlayType,
+                            )
+                        }.onSuccess {
+                            trace?.log("report:heartbeat", "ok=1 sec=$progressSec type=$heartbeatType reason=$reason")
+                        }.onFailure {
+                            trace?.log("report:heartbeat", "ok=0 sec=$progressSec type=$heartbeatType reason=$reason")
+                        }
+                    }
+                },
+            )
         }
     }
 
@@ -958,8 +986,8 @@ class PlayerActivity : BaseActivity() {
                     if (isPlaying) {
                         startReportProgressLoop()
                     } else {
-                        // Avoid flushing on every pause (and also avoid duplicate flushes when `onStop()` calls `pause()`).
-                        stopReportProgressLoop(flush = false, reason = "pause")
+                        // Keep remote pause behavior unchanged while persisting the exact local-only position.
+                        stopReportProgressLoop(flush = shouldSaveLocalProgressNow(), reason = "pause")
                     }
                 }
 
@@ -2262,6 +2290,7 @@ class PlayerActivity : BaseActivity() {
     }
 
     private fun shouldReportHistoryNow(): Boolean {
+        if (!PlaybackHistoryPolicy.forMode(BiliClient.prefs.playbackHistoryMode).reportRemoteProgress) return false
         if (!BiliClient.cookies.hasSessData()) return false
         val csrf = BiliClient.cookies.getCookieValue("bili_jct").orEmpty().trim()
         if (csrf.isBlank()) return false
@@ -2290,6 +2319,7 @@ class PlayerActivity : BaseActivity() {
     }
 
     private fun shouldReportWebHeartbeatNow(): Boolean {
+        if (!PlaybackHistoryPolicy.forMode(BiliClient.prefs.playbackHistoryMode).reportRemoteProgress) return false
         if (!BiliClient.cookies.hasSessData()) return false
         val csrf = BiliClient.cookies.getCookieValue("bili_jct").orEmpty().trim()
         if (csrf.isBlank()) return false
@@ -2301,7 +2331,12 @@ class PlayerActivity : BaseActivity() {
     }
 
     private fun shouldReportAnyProgressNow(): Boolean {
-        return shouldReportHistoryNow() || shouldReportWebHeartbeatNow()
+        return shouldSaveLocalProgressNow() || shouldReportHistoryNow() || shouldReportWebHeartbeatNow()
+    }
+
+    private fun shouldSaveLocalProgressNow(): Boolean {
+        if (!PlaybackHistoryPolicy.forMode(BiliClient.prefs.playbackHistoryMode).saveLocalHistory) return false
+        return buildLocalPlaybackHistoryRecord(progressMs = 0L, durationMs = 0L, watchedAtMs = 0L) != null
     }
 
     private fun startReportProgressLoop() {
@@ -2354,38 +2389,77 @@ class PlayerActivity : BaseActivity() {
 
         val shouldHistory = shouldReportHistoryNow()
         val shouldHeartbeat = shouldReportWebHeartbeatNow()
+        val localRecord =
+            if (shouldSaveLocalProgressNow()) {
+                buildLocalPlaybackHistoryRecord(
+                    progressMs = exo.currentPosition,
+                    durationMs = exo.duration.takeIf { it > 0L } ?: currentViewDurationMs ?: 0L,
+                    watchedAtMs = System.currentTimeMillis(),
+                )
+            } else {
+                null
+            }
         var anyOk = false
 
-        if (shouldHistory && aid != null) {
-            runCatching {
-                BiliApi.historyReport(aid = aid, cid = cid, progressSec = progressSec, platform = "android")
-            }.onSuccess {
-                anyOk = true
-                trace?.log("report:history", "ok=1 sec=$progressSec reason=$reason")
-            }.onFailure {
-                trace?.log("report:history", "ok=0 sec=$progressSec reason=$reason")
-            }
-        }
+        recordPlaybackProgress(
+            mode = BiliClient.prefs.playbackHistoryMode,
+            localRecord = localRecord,
+            remoteProgressEligible = shouldHistory || shouldHeartbeat,
+            saveLocal = { record ->
+                try {
+                    val saved =
+                        withContext(Dispatchers.IO) {
+                            if (!PlaybackHistoryPolicy.forMode(BiliClient.prefs.playbackHistoryMode).saveLocalHistory) {
+                                false
+                            } else {
+                                BiliClient.prefs.localPlaybackHistory.upsert(record)
+                                true
+                            }
+                        }
+                    if (saved) {
+                        anyOk = true
+                        trace?.log("report:local_history", "ok=1 sec=$progressSec reason=$reason")
+                    }
+                } catch (exception: CancellationException) {
+                    throw exception
+                } catch (throwable: Throwable) {
+                    AppLog.e("Player", "local playback history save failed reason=$reason", throwable)
+                    trace?.log("report:local_history", "ok=0 sec=$progressSec reason=$reason")
+                }
+            },
+            reportRemote = {
+                if (shouldHistory && aid != null) {
+                    runCatching {
+                        BiliApi.historyReport(aid = aid, cid = cid, progressSec = progressSec, platform = "android")
+                    }.onSuccess {
+                        anyOk = true
+                        trace?.log("report:history", "ok=1 sec=$progressSec reason=$reason")
+                    }.onFailure {
+                        trace?.log("report:history", "ok=0 sec=$progressSec reason=$reason")
+                    }
+                }
 
-        if (shouldHeartbeat) {
-            runCatching {
-                BiliApi.webHeartbeat(
-                    aid = aid,
-                    bvid = currentBvid,
-                    cid = cid,
-                    epId = epId.takeIf { isPgc },
-                    seasonId = seasonId.takeIf { isPgc },
-                    playedTimeSec = progressSec,
-                    type = heartbeatType,
-                    playType = 0,
-                )
-            }.onSuccess {
-                anyOk = true
-                trace?.log("report:heartbeat", "ok=1 sec=$progressSec type=$heartbeatType reason=$reason")
-            }.onFailure {
-                trace?.log("report:heartbeat", "ok=0 sec=$progressSec type=$heartbeatType reason=$reason")
-            }
-        }
+                if (shouldHeartbeat) {
+                    runCatching {
+                        BiliApi.webHeartbeat(
+                            aid = aid,
+                            bvid = currentBvid,
+                            cid = cid,
+                            epId = epId.takeIf { isPgc },
+                            seasonId = seasonId.takeIf { isPgc },
+                            playedTimeSec = progressSec,
+                            type = heartbeatType,
+                            playType = 0,
+                        )
+                    }.onSuccess {
+                        anyOk = true
+                        trace?.log("report:heartbeat", "ok=1 sec=$progressSec type=$heartbeatType reason=$reason")
+                    }.onFailure {
+                        trace?.log("report:heartbeat", "ok=0 sec=$progressSec type=$heartbeatType reason=$reason")
+                    }
+                }
+            },
+        )
 
         if (anyOk) {
             lastReportAtMs = now
@@ -3714,6 +3788,8 @@ class PlayerActivity : BaseActivity() {
         const val EXTRA_AID = "aid"
         const val EXTRA_SEASON_ID = "season_id"
         const val EXTRA_START_POSITION_MS = "start_position_ms"
+        const val EXTRA_LOCAL_HISTORY_WORK_ID = "local_history_work_id"
+        const val EXTRA_LOCAL_HISTORY_EPISODE_ID = "local_history_episode_id"
         const val EXTRA_PLAYLIST_TOKEN = "playlist_token"
         const val EXTRA_PLAYLIST_INDEX = "playlist_index"
         internal const val EXTRA_ENGINE_SWITCH_RESUME_POSITION_MS = "engine_switch_resume_position_ms"
