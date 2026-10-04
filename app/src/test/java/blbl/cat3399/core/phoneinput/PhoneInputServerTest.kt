@@ -90,6 +90,49 @@ class PhoneInputServerTest {
     }
 
     @Test
+    fun rejectsMalformedBlankAndMissingInputPayloads() {
+        val server = PhoneInputServer(dispatchToMainThread = { it() })
+        val received = LinkedBlockingQueue<Input>()
+        server.setListener(PhoneInputServer.Listener { text, action -> received.add(Input(text, action)) })
+        try {
+            assertTrue(server.start())
+
+            val responses =
+                listOf(
+                    postRawInput("{"),
+                    postRawInput("""{"text":"   ","action":"search"}"""),
+                    postRawInput("""{"action":"fill"}"""),
+                    postRawInput(""),
+                    postRawInput("", contentLength = null),
+                )
+
+            assertTrue(responses.all { it.status == 400 })
+            assertTrue(responses.all { it.body == """{"ok":false}""" })
+            assertTrue(received.isEmpty())
+        } finally {
+            server.stop()
+        }
+    }
+
+    @Test
+    fun rejectsOversizedAndIntOverflowingContentLengths() {
+        val server = PhoneInputServer(dispatchToMainThread = { it() })
+        try {
+            assertTrue(server.start())
+
+            val oversized = postRawInput("", contentLength = "65537")
+            val intOverflow = postRawInput("", contentLength = "2147483648")
+
+            assertEquals(413, oversized.status)
+            assertEquals(413, intOverflow.status)
+            assertEquals("""{"ok":false}""", oversized.body)
+            assertEquals("""{"ok":false}""", intOverflow.body)
+        } finally {
+            server.stop()
+        }
+    }
+
+    @Test
     fun stoppingServerReleasesFixedPort() {
         val server = PhoneInputServer(dispatchToMainThread = { it() })
         assertTrue(server.start())
@@ -116,6 +159,36 @@ class PhoneInputServerTest {
         connection.setRequestProperty("Content-Type", "application/json; charset=utf-8")
         connection.outputStream.use { it.write(body.toByteArray(Charsets.UTF_8)) }
         return readResponse(connection)
+    }
+
+    private fun postRawInput(body: String, contentLength: String? = body.toByteArray(Charsets.UTF_8).size.toString()): Response {
+        val bodyBytes = body.toByteArray(Charsets.UTF_8)
+        val socket = Socket("127.0.0.1", PhoneInputServer.PORT)
+        socket.soTimeout = 3_000
+        return socket.use {
+            val headers =
+                buildString {
+                    append("POST /input HTTP/1.1\r\n")
+                    append("Host: 127.0.0.1:${PhoneInputServer.PORT}\r\n")
+                    append("Connection: close\r\n")
+                    append("Content-Type: application/json; charset=utf-8\r\n")
+                    if (contentLength != null) append("Content-Length: $contentLength\r\n")
+                    append("\r\n")
+                }
+            it.getOutputStream().apply {
+                write(headers.toByteArray(Charsets.ISO_8859_1))
+                write(bodyBytes)
+                flush()
+            }
+
+            val response = it.getInputStream().bufferedReader(Charsets.ISO_8859_1).readText()
+            val statusLine = response.substringBefore("\r\n")
+            Response(
+                status = statusLine.split(' ')[1].toInt(),
+                contentType = response.lineSequence().first { it.startsWith("Content-Type: ") }.substringAfter(": "),
+                body = response.substringAfter("\r\n\r\n"),
+            )
+        }
     }
 
     private fun readResponse(connection: HttpURLConnection): Response {

@@ -180,13 +180,16 @@ internal class PhoneInputServer(
 
         val method = parts[0].uppercase(Locale.US)
         val path = parts[1].substringBefore('?')
-        var contentLength = 0L
+        var contentLength: Long? = null
+        var invalidContentLength = false
         while (true) {
             val line = input.readLine() ?: return
             if (line.isEmpty()) break
             val separator = line.indexOf(':')
             if (separator > 0 && line.substring(0, separator).equals("content-length", ignoreCase = true)) {
-                contentLength = line.substring(separator + 1).trim().toLongOrNull() ?: 0L
+                val parsedLength = line.substring(separator + 1).trim().toLongOrNull()
+                if (parsedLength == null || contentLength != null) invalidContentLength = true
+                contentLength = parsedLength
             }
         }
 
@@ -195,37 +198,51 @@ internal class PhoneInputServer(
         } else if (method == "GET" && path == "/status") {
             respond(socket, 200, "OK", "application/json; charset=utf-8", """{"running":true,"port":$PORT}""")
         } else if (method == "POST" && path == "/input") {
-            handleInput(readBody(input, contentLength))
-            respond(socket, 200, "OK", "application/json; charset=utf-8", """{"ok":true}""")
+            when {
+                invalidContentLength || contentLength == null || contentLength <= 0L -> {
+                    respond(socket, 400, "Bad Request", "application/json; charset=utf-8", """{"ok":false}""")
+                }
+                contentLength > MAX_BODY_BYTES -> {
+                    respond(socket, 413, "Payload Too Large", "application/json; charset=utf-8", """{"ok":false}""")
+                }
+                else -> {
+                    val body = readBody(input, contentLength.toInt())
+                    if (body != null && handleInput(body)) {
+                        respond(socket, 200, "OK", "application/json; charset=utf-8", """{"ok":true}""")
+                    } else {
+                        respond(socket, 400, "Bad Request", "application/json; charset=utf-8", """{"ok":false}""")
+                    }
+                }
+            }
         } else {
             respond(socket, 404, "Not Found", "text/plain; charset=utf-8", "path=$path")
         }
     }
 
-    private fun readBody(input: java.io.BufferedReader, contentLength: Long): String {
-        if (contentLength <= 0L) return ""
-        val buffer = CharArray(contentLength.toInt().coerceAtMost(MAX_BODY_BYTES))
+    private fun readBody(input: java.io.BufferedReader, contentLength: Int): String? {
+        val buffer = CharArray(contentLength)
         var length = 0
         while (length < buffer.size) {
             val count = input.read(buffer, length, buffer.size - length)
-            if (count < 0) break
+            if (count < 0) return null
             length += count
         }
         val bytes = ByteArray(length) { index -> buffer[index].code.toByte() }
         return String(bytes, StandardCharsets.UTF_8)
     }
 
-    private fun handleInput(body: String) {
+    private fun handleInput(body: String): Boolean {
         val input =
             try {
                 JSONObject(body)
             } catch (e: JSONException) {
                 AppLog.w(TAG, "invalid input JSON", e)
-                return
+                return false
             }
-        val text = input.optString("text").takeIf { it.isNotBlank() } ?: return
+        val text = input.optString("text").takeIf { it.isNotBlank() } ?: return false
         val action = if (input.optString("action").equals("search", ignoreCase = true)) Action.SEARCH else Action.FILL
         dispatchToMainThread { listener?.onInput(text, action) }
+        return true
     }
 
     private fun respond(socket: Socket, code: Int, reason: String, contentType: String, body: String) {
