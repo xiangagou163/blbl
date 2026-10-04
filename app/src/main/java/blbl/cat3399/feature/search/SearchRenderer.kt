@@ -1264,7 +1264,7 @@ class SearchRenderer internal constructor(
         rescaleMargins(binding.panelResults, start = false, top = true, end = false, bottom = false)
 
         rescaleMargins(binding.panelKeyboard, start = true, top = false, end = true, bottom = false)
-        rescaleMargins(binding.panelPhoneInput, start = false, top = false, end = true, bottom = false)
+        rescaleMargins(binding.panelPhoneInput, start = false, top = true, end = false, bottom = false)
         rescaleMargins(binding.recyclerKeys, start = false, top = true, end = false, bottom = false)
         rescaleLayoutSize(binding.ivPhoneInputQr)
         rescaleTextSize(binding.tvPhoneInputTitle)
