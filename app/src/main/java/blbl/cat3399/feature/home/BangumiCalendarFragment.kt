@@ -50,22 +50,27 @@ class BangumiCalendarFragment : Fragment(), RefreshKeyHandler, TabSwitchFocusTar
                 binding.btnQuarter4,
             )
 
-    private var selectedYear = Calendar.getInstance().get(Calendar.YEAR)
-    private var selectedQuarter = Calendar.getInstance().get(Calendar.MONTH) / 3 + 1
+    private val navigationState =
+        Calendar.getInstance().let { calendar ->
+            BangumiCalendarNavigationState(
+                BangumiCalendarPeriod(
+                    year = calendar.get(Calendar.YEAR),
+                    quarter = calendar.get(Calendar.MONTH) / 3 + 1,
+                ),
+            )
+        }
     private var snapshot: BangumiCalendarSnapshot? = null
     private var dpadGridController: DpadGridController? = null
     private var requestToken = 0
     private var isLoadingInitial = false
     private var isLoadingMore = false
     private var displayedPeriod: BangumiCalendarPeriod? = null
-    private var lastFocusedAdapterPosition: Int? = null
     private var pendingGridFocusPosition: Int? = null
-    private var pendingSearchReturnPosition: Int? = null
 
     private lateinit var adapter: BangumiCalendarAdapter
 
     private val period: BangumiCalendarPeriod
-        get() = BangumiCalendarPeriod(selectedYear, selectedQuarter)
+        get() = navigationState.period
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -96,8 +101,8 @@ class BangumiCalendarFragment : Fragment(), RefreshKeyHandler, TabSwitchFocusTar
             button.isCheckable = true
             button.setOnClickListener { selectQuarter(index + 1) }
         }
-        binding.btnPreviousYear.setOnClickListener { selectYear(selectedYear - 1) }
-        binding.btnNextYear.setOnClickListener { selectYear(selectedYear + 1) }
+        binding.btnPreviousYear.setOnClickListener { selectYear(period.year - 1) }
+        binding.btnNextYear.setOnClickListener { selectYear(period.year + 1) }
 
         dpadGridController?.release()
         dpadGridController =
@@ -151,9 +156,8 @@ class BangumiCalendarFragment : Fragment(), RefreshKeyHandler, TabSwitchFocusTar
     override fun onResume() {
         super.onResume()
         (binding.recycler.layoutManager as? GridLayoutManager)?.spanCount = spanCount()
-        pendingSearchReturnPosition?.let {
+        navigationState.takePendingSearchReturnPosition()?.let {
             pendingGridFocusPosition = it
-            pendingSearchReturnPosition = null
         }
         consumePendingGridFocus()
     }
@@ -169,7 +173,7 @@ class BangumiCalendarFragment : Fragment(), RefreshKeyHandler, TabSwitchFocusTar
     override fun requestFocusFirstCardFromTab(): Boolean = requestGridFocus(0)
 
     override fun requestFocusFirstCardFromContentSwitch(): Boolean =
-        requestGridFocus(lastFocusedAdapterPosition ?: 0)
+        requestGridFocus(navigationState.focusPositionForContentSwitch())
 
     override fun requestFocusPrimaryItemFromTab(): Boolean = requestFocusFirstCardFromTab()
 
@@ -179,29 +183,27 @@ class BangumiCalendarFragment : Fragment(), RefreshKeyHandler, TabSwitchFocusTar
 
     private fun selectQuarter(quarter: Int) {
         if (quarter !in 1..4) return
-        if (quarter == selectedQuarter) {
+        if (!navigationState.selectQuarter(quarter)) {
             renderPeriodControls()
             return
         }
-        selectedQuarter = quarter
         renderPeriodControls()
         loadCurrentPeriod()
     }
 
     private fun selectYear(year: Int) {
-        if (year <= 0 || year == selectedYear || year > Calendar.getInstance().get(Calendar.YEAR)) return
-        selectedYear = year
+        if (!navigationState.selectYear(year, Calendar.getInstance().get(Calendar.YEAR))) return
         renderPeriodControls()
         loadCurrentPeriod()
     }
 
     private fun renderPeriodControls() {
         val currentYear = Calendar.getInstance().get(Calendar.YEAR)
-        binding.tvYear.text = getString(R.string.bangumi_calendar_year_format, selectedYear)
-        binding.btnPreviousYear.isEnabled = selectedYear > 1
-        binding.btnNextYear.isEnabled = selectedYear < currentYear
+        binding.tvYear.text = getString(R.string.bangumi_calendar_year_format, period.year)
+        binding.btnPreviousYear.isEnabled = period.year > 1
+        binding.btnNextYear.isEnabled = period.year < currentYear
         quarterButtons.forEachIndexed { index, button ->
-            button.isChecked = index + 1 == selectedQuarter
+            button.isChecked = index + 1 == period.quarter
         }
     }
 
@@ -299,11 +301,10 @@ class BangumiCalendarFragment : Fragment(), RefreshKeyHandler, TabSwitchFocusTar
     ) {
         val term = keyword.trim()
         if (term.isBlank()) return
-        lastFocusedAdapterPosition = position
-        pendingSearchReturnPosition = position
+        navigationState.searchOpenedFromCard(position)
         val host = activity as? SearchNavigationHost
         if (host == null) {
-            pendingSearchReturnPosition = null
+            navigationState.cancelPendingSearchReturn()
             AppLog.e("BangumiCalendar", "unable to open search: activity does not host in-app search")
             AppToast.show(requireContext(), getString(R.string.bangumi_calendar_search_unavailable))
             return
@@ -331,7 +332,7 @@ class BangumiCalendarFragment : Fragment(), RefreshKeyHandler, TabSwitchFocusTar
             smoothScroll = false,
             isAlive = { _binding === currentBinding && isResumed },
             onFocused = {
-                lastFocusedAdapterPosition = target
+                navigationState.rememberFocusedCard(target)
                 if (pendingGridFocusPosition == position) pendingGridFocusPosition = null
             },
         )
@@ -339,7 +340,7 @@ class BangumiCalendarFragment : Fragment(), RefreshKeyHandler, TabSwitchFocusTar
     }
 
     private fun focusSelectedQuarter(): Boolean {
-        val button = quarterButtons.getOrNull(selectedQuarter - 1) ?: return false
+        val button = quarterButtons.getOrNull(period.quarter - 1) ?: return false
         return button.requestFocus()
     }
 
@@ -349,7 +350,7 @@ class BangumiCalendarFragment : Fragment(), RefreshKeyHandler, TabSwitchFocusTar
         recycler.findContainingViewHolder(focused)
             ?.bindingAdapterPosition
             ?.takeIf { it != RecyclerView.NO_POSITION }
-            ?.let { lastFocusedAdapterPosition = it }
+            ?.let(navigationState::rememberFocusedCard)
     }
 
     private fun selectedHomeTabLayout() =

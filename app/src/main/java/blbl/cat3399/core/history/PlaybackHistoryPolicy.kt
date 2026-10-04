@@ -52,6 +52,18 @@ data class PlaybackHistoryPolicy(
     }
 }
 
+internal suspend fun recordPlaybackProgress(
+    mode: PlaybackHistoryMode,
+    localRecord: PlaybackHistoryRecord?,
+    remoteProgressEligible: Boolean,
+    saveLocal: suspend (PlaybackHistoryRecord) -> Unit,
+    reportRemote: suspend () -> Unit,
+) {
+    val policy = PlaybackHistoryPolicy.forMode(mode)
+    if (policy.saveLocalHistory && localRecord != null) saveLocal(localRecord)
+    if (policy.reportRemoteProgress && remoteProgressEligible) reportRemote()
+}
+
 fun persistSearchHistoryIfAllowed(
     mode: PlaybackHistoryMode,
     keyword: String,
