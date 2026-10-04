@@ -219,7 +219,7 @@ class BangumiCalendarFragment : Fragment(), RefreshKeyHandler, TabSwitchFocusTar
         snapshot = cached
         displayedPeriod = selectedPeriod
         if (!hasSameDisplayedItems) adapter.submit(cached?.items.orEmpty())
-        updateEmptyState(showEmpty = cached?.items?.isEmpty() == true)
+        updateEmptyState(cached)
         val cacheIsFresh = cached?.let(repository::isFresh) == true
         if (cacheIsFresh && !forceRefresh) {
             binding.swipeRefresh.isRefreshing = false
@@ -238,7 +238,7 @@ class BangumiCalendarFragment : Fragment(), RefreshKeyHandler, TabSwitchFocusTar
                 if (previousItems != result.snapshot.items) {
                     adapter.submit(result.snapshot.items)
                 }
-                updateEmptyState(showEmpty = result.snapshot.items.isEmpty())
+                updateEmptyState(result.snapshot, loadFailed = result.usedCacheFallback)
                 if (result.usedCacheFallback) {
                     AppToast.show(requireContext(), getString(R.string.bangumi_calendar_refresh_failed))
                 }
@@ -248,7 +248,7 @@ class BangumiCalendarFragment : Fragment(), RefreshKeyHandler, TabSwitchFocusTar
             } catch (error: Exception) {
                 if (token != requestToken || selectedPeriod != period) return@launch
                 AppLog.e("BangumiCalendar", "load failed period=${selectedPeriod.cacheKey}", error)
-                updateEmptyState(showEmpty = false)
+                updateEmptyState(snapshot, loadFailed = true)
                 AppToast.show(requireContext(), getString(R.string.bangumi_calendar_load_failed))
             } finally {
                 if (token == requestToken) {
@@ -273,7 +273,7 @@ class BangumiCalendarFragment : Fragment(), RefreshKeyHandler, TabSwitchFocusTar
                 val appended = updated.items.filterNot { it.id in existingIds }
                 snapshot = updated
                 adapter.append(appended)
-                updateEmptyState(showEmpty = updated.items.isEmpty())
+                updateEmptyState(updated)
                 consumePendingGridFocus()
                 dpadGridController?.consumePendingFocusAfterLoadMore()
             } catch (error: CancellationException) {
@@ -289,8 +289,23 @@ class BangumiCalendarFragment : Fragment(), RefreshKeyHandler, TabSwitchFocusTar
         }
     }
 
-    private fun updateEmptyState(showEmpty: Boolean) {
-        _binding?.tvEmpty?.visibility = if (showEmpty) View.VISIBLE else View.GONE
+    private fun updateEmptyState(
+        snapshot: BangumiCalendarSnapshot?,
+        loadFailed: Boolean = false,
+    ) {
+        val emptyView = _binding?.tvEmpty ?: return
+        when (bangumiCalendarEmptyState(snapshot, loadFailed)) {
+            BangumiCalendarEmptyState.HIDDEN -> emptyView.visibility = View.GONE
+            BangumiCalendarEmptyState.NO_RESULTS -> {
+                emptyView.setText(R.string.bangumi_calendar_empty)
+                emptyView.visibility = View.VISIBLE
+            }
+
+            BangumiCalendarEmptyState.LOAD_FAILED -> {
+                emptyView.setText(R.string.bangumi_calendar_load_failed)
+                emptyView.visibility = View.VISIBLE
+            }
+        }
     }
 
     private fun spanCount(): Int = BiliClient.prefs.pgcGridSpanCount.coerceIn(1, 6)
