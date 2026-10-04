@@ -12,6 +12,7 @@ import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import androidx.recyclerview.widget.SimpleItemAnimator
 import blbl.cat3399.core.api.BiliApi
+import blbl.cat3399.core.history.PlaybackHistoryPolicy
 import blbl.cat3399.core.log.AppLog
 import blbl.cat3399.core.model.HistoryEntry
 import blbl.cat3399.core.model.LiveRoomCard
@@ -174,6 +175,15 @@ class MyHistoryFragment : Fragment(), MyTabSwitchFocusTarget, RefreshKeyHandler 
 
     override fun onResume() {
         super.onResume()
+        if (!PlaybackHistoryPolicy.forMode(BiliClient.prefs.playbackHistoryMode).readRemoteProgress) {
+            binding.swipeRefresh.isEnabled = false
+            binding.swipeRefresh.isRefreshing = false
+            initialLoadTriggered = false
+            loadedKeys.clear()
+            adapter.submit(emptyList())
+            return
+        }
+        binding.swipeRefresh.isEnabled = true
         (binding.recycler.layoutManager as? GridLayoutManager)?.spanCount = spanCountForWidth(resources)
         viewportFillMonitor?.scheduleCheck()
         maybeTriggerInitialLoad()
@@ -184,6 +194,7 @@ class MyHistoryFragment : Fragment(), MyTabSwitchFocusTarget, RefreshKeyHandler 
     override fun handleRefreshKey(): Boolean {
         val b = _binding ?: return false
         if (!isResumed) return false
+        if (!PlaybackHistoryPolicy.forMode(BiliClient.prefs.playbackHistoryMode).readRemoteProgress) return true
         if (b.swipeRefresh.isRefreshing) return true
         pendingFocusFirstItemAfterRefresh = true
         dpadGridController?.parkFocusForDataSetReset()
@@ -279,6 +290,10 @@ class MyHistoryFragment : Fragment(), MyTabSwitchFocusTarget, RefreshKeyHandler 
         isRefresh: Boolean = false,
         refreshPresentation: RefreshPresentation = RefreshPresentation.ResetToServerOrder,
     ) {
+        if (!PlaybackHistoryPolicy.forMode(BiliClient.prefs.playbackHistoryMode).readRemoteProgress) {
+            _binding?.swipeRefresh?.isRefreshing = false
+            return
+        }
         val preserveCurrentOrderRefresh = isRefresh && refreshPresentation == RefreshPresentation.PreserveCurrentOrder
         val startSnap = paging.snapshot()
         if (startSnap.isLoading || startSnap.endReached) return
@@ -454,24 +469,35 @@ class MyHistoryFragment : Fragment(), MyTabSwitchFocusTarget, RefreshKeyHandler 
         buildPagedVideoCardPlaybackHandle(
             source = "MyHistory",
             cardsProvider = adapter::videoSnapshot,
-            nextCursorProvider = { paging.snapshot().nextKey },
-            hasMoreProvider = { !paging.snapshot().endReached },
+            nextCursorProvider = {
+                paging.snapshot().nextKey.takeIf {
+                    PlaybackHistoryPolicy.forMode(BiliClient.prefs.playbackHistoryMode).readRemoteProgress
+                }
+            },
+            hasMoreProvider = {
+                PlaybackHistoryPolicy.forMode(BiliClient.prefs.playbackHistoryMode).readRemoteProgress &&
+                    !paging.snapshot().endReached
+            },
             playlistItemFactory = ::historyVideoCardPlaylistItem,
         ) { cursor ->
-            val page =
-                BiliApi.historyCursor(
-                    max = cursor?.max ?: 0,
-                    business = cursor?.business,
-                    viewAt = cursor?.viewAt ?: 0,
-                    ps = 24,
+            if (!PlaybackHistoryPolicy.forMode(BiliClient.prefs.playbackHistoryMode).readRemoteProgress) {
+                VideoCardPlaylistPage(cards = emptyList(), nextCursor = null, hasMore = false, canAdvance = false)
+            } else {
+                val page =
+                    BiliApi.historyCursor(
+                        max = cursor?.max ?: 0,
+                        business = cursor?.business,
+                        viewAt = cursor?.viewAt ?: 0,
+                        ps = 24,
+                    )
+                val nextCursor = page.cursor
+                VideoCardPlaylistPage(
+                    cards = page.items.videoCards(),
+                    nextCursor = nextCursor,
+                    hasMore = nextCursor != null,
+                    canAdvance = nextCursor != null && nextCursor != cursor && page.items.isNotEmpty(),
                 )
-            val nextCursor = page.cursor
-            VideoCardPlaylistPage(
-                cards = page.items.videoCards(),
-                nextCursor = nextCursor,
-                hasMore = nextCursor != null,
-                canAdvance = nextCursor != null && nextCursor != cursor && page.items.isNotEmpty(),
-            )
+            }
         }
 
     private fun List<HistoryEntry>.videoCards(): List<VideoCard> = mapNotNull { (it as? HistoryEntry.Video)?.card }
